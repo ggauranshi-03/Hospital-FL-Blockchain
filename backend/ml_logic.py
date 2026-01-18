@@ -53,7 +53,7 @@ class Net(nn.Module):
         x = self.relu(self.fc1(x))
         x = self.fc2(x)
         return x
-def train_local(num_samples=500):
+def train_local(num_samples=500,round_id=1):
     """
     Trains the model locally on a random subset of data.
     Returns: (ipfs_hash, accuracy, logs[])
@@ -86,6 +86,12 @@ def train_local(num_samples=500):
 
     # 2. Train (10 Epochs)
     model = Net()
+    global_model_path = f"global_model_r{round_id}.pth"
+    if os.path.exists(global_model_path):
+        print(f"Loading Global Model from Round {round_id}")
+        model.load_state_dict(torch.load(global_model_path))
+    else:
+        print("No global model found, starting from scratch.")
     optimizer = optim.Adam(model.parameters(), lr=0.001)
     criterion = nn.CrossEntropyLoss()
     

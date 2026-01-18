@@ -4,173 +4,109 @@ import io
 from web3 import Web3
 from ml_logic import Net # Import the same architecture
 import json
+import copy
 
 # --- CONFIG ---
 W3_URL = "https://sepolia.gateway.tenderly.co"
 CONTRACT_ADDRESS = "0xFcC28C01206847Be2997A3df882c3aE7EC6aB36b"
-ABI = [
-	{
-		"inputs": [],
-		"stateMutability": "nonpayable",
-		"type": "constructor"
-	},
-	{
-		"anonymous": false,
-		"inputs": [
-			{
-				"indexed": true,
-				"internalType": "address",
-				"name": "hospital",
-				"type": "address"
-			},
-			{
-				"indexed": false,
-				"internalType": "uint256",
-				"name": "roundId",
-				"type": "uint256"
-			},
-			{
-				"indexed": false,
-				"internalType": "uint256",
-				"name": "accuracy",
-				"type": "uint256"
-			}
-		],
-		"name": "UpdateSubmitted",
-		"type": "event"
-	},
-	{
-		"inputs": [],
-		"name": "currentRound",
-		"outputs": [
-			{
-				"internalType": "uint256",
-				"name": "",
-				"type": "uint256"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "uint256",
-				"name": "_roundId",
-				"type": "uint256"
-			}
-		],
-		"name": "getUpdates",
-		"outputs": [
-			{
-				"components": [
-					{
-						"internalType": "address",
-						"name": "hospital",
-						"type": "address"
-					},
-					{
-						"internalType": "string",
-						"name": "ipfsHash",
-						"type": "string"
-					},
-					{
-						"internalType": "uint256",
-						"name": "accuracy",
-						"type": "uint256"
-					},
-					{
-						"internalType": "uint256",
-						"name": "roundId",
-						"type": "uint256"
-					}
-				],
-				"internalType": "struct FLRegistry.ModelUpdate[]",
-				"name": "",
-				"type": "tuple[]"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [],
-		"name": "owner",
-		"outputs": [
-			{
-				"internalType": "address",
-				"name": "",
-				"type": "address"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "uint256",
-				"name": "",
-				"type": "uint256"
-			},
-			{
-				"internalType": "uint256",
-				"name": "",
-				"type": "uint256"
-			}
-		],
-		"name": "roundUpdates",
-		"outputs": [
-			{
-				"internalType": "address",
-				"name": "hospital",
-				"type": "address"
-			},
-			{
-				"internalType": "string",
-				"name": "ipfsHash",
-				"type": "string"
-			},
-			{
-				"internalType": "uint256",
-				"name": "accuracy",
-				"type": "uint256"
-			},
-			{
-				"internalType": "uint256",
-				"name": "roundId",
-				"type": "uint256"
-			}
-		],
-		"stateMutability": "view",
-		"type": "function"
-	},
-	{
-		"inputs": [],
-		"name": "startNextRound",
-		"outputs": [],
-		"stateMutability": "nonpayable",
-		"type": "function"
-	},
-	{
-		"inputs": [
-			{
-				"internalType": "string",
-				"name": "_ipfsHash",
-				"type": "string"
-			},
-			{
-				"internalType": "uint256",
-				"name": "_accuracy",
-				"type": "uint256"
-			}
-		],
-		"name": "submitUpdate",
-		"outputs": [],
-		"stateMutability": "nonpayable",
-		"type": "function"
-	}
+ABI_JSON = """
+[
+    {
+        "inputs": [],
+        "stateMutability": "nonpayable",
+        "type": "constructor"
+    },
+    {
+        "anonymous": false,
+        "inputs": [
+            {
+                "indexed": true,
+                "internalType": "address",
+                "name": "hospital",
+                "type": "address"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "roundId",
+                "type": "uint256"
+            },
+            {
+                "indexed": false,
+                "internalType": "uint256",
+                "name": "accuracy",
+                "type": "uint256"
+            }
+        ],
+        "name": "UpdateSubmitted",
+        "type": "event"
+    },
+    {
+        "inputs": [],
+        "name": "currentRound",
+        "outputs": [
+            {
+                "internalType": "uint256",
+                "name": "",
+                "type": "uint256"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [
+            {
+                "internalType": "uint256",
+                "name": "_roundId",
+                "type": "uint256"
+            }
+        ],
+        "name": "getUpdates",
+        "outputs": [
+            {
+                "components": [
+                    {
+                        "internalType": "address",
+                        "name": "hospital",
+                        "type": "address"
+                    },
+                    {
+                        "internalType": "string",
+                        "name": "ipfsHash",
+                        "type": "string"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "accuracy",
+                        "type": "uint256"
+                    },
+                    {
+                        "internalType": "uint256",
+                        "name": "roundId",
+                        "type": "uint256"
+                    }
+                ],
+                "internalType": "struct FLRegistry.ModelUpdate[]",
+                "name": "",
+                "type": "tuple[]"
+            }
+        ],
+        "stateMutability": "view",
+        "type": "function"
+    },
+    {
+        "inputs": [],
+        "name": "startNextRound",
+        "outputs": [],
+        "stateMutability": "nonpayable",
+        "type": "function"
+    }
 ]
+"""
+
+# Convert the string to a Python-readable format
+ABI = json.loads(ABI_JSON)
 
 w3 = Web3(Web3.HTTPProvider(W3_URL))
 contract = w3.eth.contract(address=CONTRACT_ADDRESS, abi=ABI)
@@ -186,13 +122,26 @@ def download_model_from_ipfs(ipfs_hash):
 def federated_averaging(model_updates):
     """
     Implements FedAvg: Mathematical average of all model weights.
-    model_updates: List of state_dicts
     """
-    global_dict = model_updates[0]
+    if not model_updates:
+        return None
+
+    # Use a deep copy of the first model as the starting point for the average
+    # This prevents modifying the original model in the list
+    global_dict = copy.deepcopy(model_updates[0])
+    
+    # Get the number of models to average
+    num_models = len(model_updates)
+    print(f"Averaging {num_models} valid model updates...")
+
     for key in global_dict.keys():
-        for i in range(1, len(model_updates)):
+        # Sum the weights for this specific layer from all other models
+        for i in range(1, num_models):
             global_dict[key] += model_updates[i][key]
-        global_dict[key] = torch.div(global_dict[key], len(model_updates))
+        
+        # Divide by the number of models to get the mean
+        global_dict[key] = torch.div(global_dict[key], num_models)
+        
     return global_dict
 
 def run_global_aggregation():
@@ -218,9 +167,18 @@ def run_global_aggregation():
         if weights:
             state_dicts.append(weights)
 
+    if len(state_dicts) == 0:
+        print("❌ Error: No models were successfully downloaded from IPFS. Check your hashes.")
+        return
+
     # 4. Perform FedAvg
     global_weights = federated_averaging(state_dicts)
     
-    # 5. Save the new Global Model
-    torch.save(global_weights, f"global_model_r{current_round + 1}.pth")
-    print(f"✅ Global Model for Round {current_round + 1} created!")
+    if global_weights:
+        # 5. Save the new Global Model
+        save_name = f"global_model_r{current_round + 1}.pth"
+        torch.save(global_weights, save_name)
+        print(f"✅ Global Model for Round {current_round + 1} created as '{save_name}'!")
+if __name__ == "__main__":
+    # You can run this manually or put it in a loop to check every X minutes
+    run_global_aggregation()
