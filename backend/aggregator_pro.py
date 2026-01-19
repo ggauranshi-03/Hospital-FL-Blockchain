@@ -11,7 +11,7 @@ import copy
 # --- CONFIGURATION ---
 W3_URL = "https://sepolia.gateway.tenderly.co"
 CONTRACT_ADDRESS = "0xFcC28C01206847Be2997A3df882c3aE7EC6aB36b"
-OWNER_PRIVATE_KEY = "0bd951ba4238b9e90dba0a8dd29f9e0d41e611359e8021229229338ad5adba74" # REQUIRED to advance the round
+OWNER_PRIVATE_KEY = "" # REQUIRED to advance the round
 MAX_GLOBAL_ROUNDS = 5       # Set your target rounds
 HOSPITAL_THRESHOLD = 2      # Minimum submissions needed
 
