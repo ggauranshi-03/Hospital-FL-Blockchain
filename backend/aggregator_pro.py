@@ -116,13 +116,40 @@ account = w3.eth.account.from_key(OWNER_PRIVATE_KEY)
 contract = w3.eth.contract(address=CONTRACT_ADDRESS, abi=ABI)
 
 def download_model_from_ipfs(ipfs_hash):
+    """Downloads the .pth file with Rate-Limit (429) handling."""
+    # 1. Skip known invalid hashes immediately
+    if "Fake" in ipfs_hash or ipfs_hash == "QmHash748":
+        print(f"⏩ Skipping known invalid CID: {ipfs_hash}")
+        return None
+
     url = f"https://gateway.pinata.cloud/ipfs/{ipfs_hash}"
-    try:
-        response = requests.get(url, timeout=30)
-        if response.status_code == 200:
-            return torch.load(io.BytesIO(response.content), map_location=torch.device('cpu'))
-    except: return None
+    max_retries = 3
+    retry_delay = 5 # seconds
+
+    for attempt in range(max_retries):
+        try:
+            response = requests.get(url, timeout=60)
+            
+            if response.status_code == 200:
+                return torch.load(io.BytesIO(response.content), map_location=torch.device('cpu'))
+            
+            elif response.status_code == 429:
+                # Rate limit hit - wait and try again
+                print(f"⏳ Rate limit [429] hit for {ipfs_hash}. Retrying in {retry_delay}s... (Attempt {attempt+1}/{max_retries})")
+                time.sleep(retry_delay)
+                retry_delay *= 2 # Exponential backoff
+                
+            else:
+                print(f"⚠️ IPFS Download Error [{response.status_code}] for CID: {ipfs_hash}")
+                return None
+                
+        except Exception as e:
+            print(f"❌ Network Exception for CID {ipfs_hash}: {e}")
+            return None
+    
+    print(f"🛑 Failed to download {ipfs_hash} after {max_retries} attempts.")
     return None
+
 
 def federated_averaging(model_updates):
     if not model_updates: return None
@@ -153,46 +180,51 @@ def run_automation_loop():
     print(f"🚀 FL Automation Started. Target Rounds: {MAX_GLOBAL_ROUNDS}")
     
     while True:
-        # 1. Check Current Round
-        current_round = contract.functions.currentRound().call()
-        if current_round > MAX_GLOBAL_ROUNDS:
-            print("🏁 Target Global Rounds reached. Stopping process.")
-            break
+        try:
+            current_round = contract.functions.currentRound().call()
+            if current_round > MAX_GLOBAL_ROUNDS:
+                print("🏁 Target Global Rounds reached. Stopping process.")
+                break
 
-        print(f"--- Monitoring Round {current_round} ---")
-
-        # 2. Get Updates & Check Threshold
-        updates = contract.functions.getUpdates(current_round).call()
-        print(f"Current Submissions: {len(updates)} / {HOSPITAL_THRESHOLD}")
-
-        if len(updates) >= HOSPITAL_THRESHOLD:
-            print(f"✅ Threshold met! Starting Aggregation...")
+            print(f"\n--- Monitoring Round {current_round} ---")
+            all_updates = contract.functions.getUpdates(current_round).call()
             
-            state_dicts = []
-            for update in updates:
-                weights = download_model_from_ipfs(update[1])
-                if weights: state_dicts.append(weights)
-
-            if len(state_dicts) >= HOSPITAL_THRESHOLD:
-                # 3. FedAvg
-                global_weights = federated_averaging(state_dicts)
+            if len(all_updates) >= HOSPITAL_THRESHOLD:
+                print(f"✅ Submissions detected ({len(all_updates)}). Filtering and downloading...")
                 
-                # 4. Save and Upload Global Model
-                save_name = f"global_model_r{current_round + 1}.pth"
-                torch.save(global_weights, save_name)
-                
-                print(f"☁️ Uploading Global Model {save_name} to IPFS...")
-                global_ipfs_hash = upload_to_pinata(save_name)
-                print(f"🌐 Global Hash: {global_ipfs_hash}")
+                valid_state_dicts = []
+                for update in all_updates:
+                    hospital_addr = update[0]
+                    cid = update[1]
+                    
+                    weights = download_model_from_ipfs(cid)
+                    
+                    if weights:
+                        valid_state_dicts.append(weights)
+                        print(f"  📥 Successfully loaded model from {hospital_addr[:10]}")
+                    
+                    # Small sleep between different models to avoid triggering rate limits
+                    time.sleep(2) 
 
-                # 5. Advance Blockchain
-                advance_blockchain_round()
-                print(f"🎉 Round {current_round} Complete. Moving to {current_round + 1}\n")
-            else:
-                print("❌ Download failed for some models. Retrying...")
-        
-        # Wait 30 seconds before checking blockchain again
-        time.sleep(30)
-
+                # FINAL CHECK: Did we get enough GOOD models?
+                if len(valid_state_dicts) >= HOSPITAL_THRESHOLD:
+                    print(f"🔥 Threshold met with {len(valid_state_dicts)} VALID models. Aggregating...")
+                    
+                    global_weights = federated_averaging(valid_state_dicts)
+                    save_name = f"global_model_r{current_round + 1}.pth"
+                    torch.save(global_weights, save_name)
+                    
+                    print(f"☁️ Uploading to IPFS...")
+                    global_ipfs_hash = upload_to_pinata(save_name)
+                    
+                    advance_blockchain_round()
+                    print(f"🎉 Round {current_round} Complete!")
+                else:
+                    print(f"🛑 Only {len(valid_state_dicts)} valid models found. Need {HOSPITAL_THRESHOLD}.")
+            
+            time.sleep(30)
+        except Exception as e:
+            print(f"🚨 Loop Error: {e}")
+            time.sleep(10)
 if __name__ == "__main__":
     run_automation_loop()
