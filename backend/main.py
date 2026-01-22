@@ -27,8 +27,16 @@ contract_address = "0xFcC28C01206847Be2997A3df882c3aE7EC6aB36b"
 # private_key = "" # Hospital's wallet
 # account = w3.eth.account.from_key(private_key)
 
+
 # Minimal ABI
 abi = [
+    {
+        "inputs": [],
+        "name": "currentRound",
+        "outputs": [{"internalType": "uint256", "name": "", "type": "uint256"}],
+        "stateMutability": "view",
+        "type": "function"
+    },
     {
         "inputs": [
             {"internalType": "string", "name": "_ipfsHash", "type": "string"},
@@ -74,9 +82,17 @@ class TrainingRequest(BaseModel):
 @app.post("/start-training")
 async def start_training(req: TrainingRequest):
     print(f"Starting ML Training with {req.num_samples} samples...")
+    try:
+        current_round = contract.functions.currentRound().call()
+        print(f"Current Blockchain Round: {current_round}")
+    except Exception as e:
+        print(f"Error fetching round: {e}")
+        current_round = 1 # Fallback
+    
+    print(f"Starting ML Training with {req.num_samples} samples for Round {current_round}...")
     
     # 1. Run ML (Returns Hash + Logs)
-    ipfs_hash, accuracy, logs = train_local(req.num_samples)
+    ipfs_hash, accuracy, logs = train_local(req.num_samples,round_id=current_round)
     
     print(f"Training Done. Accuracy: {accuracy}")
 
