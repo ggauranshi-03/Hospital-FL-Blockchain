@@ -24,7 +24,7 @@ app.add_middleware(
 # Blockchain Config
 w3 = Web3(Web3.HTTPProvider("https://sepolia.gateway.tenderly.co"))
 contract_address = "0xFcC28C01206847Be2997A3df882c3aE7EC6aB36b"
-# private_key = "0bd951ba4238b9e90dba0a8dd29f9e0d41e611359e8021229229338ad5adba74" # Hospital's wallet
+# private_key = "" # Hospital's wallet
 # account = w3.eth.account.from_key(private_key)
 
 # Minimal ABI
