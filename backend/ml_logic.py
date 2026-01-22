@@ -12,32 +12,74 @@ import numpy as np
 # --- PINATA CONFIG ---
 PINATA_JWT = "" 
 
-def upload_to_pinata(file_path):
-    url = "https://api.pinata.cloud/pinning/pinFileToIPFS"
+
+def get_hash_by_filename(filename):
+    """
+    Uses Pinata API to search for a CID based on the filename.
+    This ensures we always find the correct global baseline without 
+    needing to store the hash on the blockchain.
+    """
+    url = f"https://api.pinata.cloud/data/pinList?metadata[name]={filename}&status=pinned"
+    headers = {"Authorization": f"Bearer {PINATA_JWT}"}
     
-    # Use Bearer Token (Standard for Pinata)
-    headers = {
-        "Authorization": f"Bearer {PINATA_JWT}"
-    }
+    try:
+        response = requests.get(url, headers=headers)
+        if response.status_code == 200:
+            data = response.json()
+            if data["rows"]:
+                # Returns the most recent CID for this filename
+                return data["rows"][0]["ipfs_pin_hash"]
+        print(f"⚠️ Pinata Search: Could not find CID for filename: {filename}")
+        return None
+    except Exception as e:
+        print(f"❌ Pinata Search Error: {e}")
+        return None
+
+def fetch_global_model_from_ipfs(round_id, ipfs_hash):
+    """
+    Downloads the .pth file from IPFS and saves it locally.
+    Overwrites any existing file to ensure the model is fresh.
+    """
+    url = f"https://gateway.pinata.cloud/ipfs/{ipfs_hash}"
+    save_path = f"global_model_r{round_id}.pth"
+    
+    print(f"📡 MANDATORY SYNC: Downloading Global Model for Round {round_id}...")
+    
+    try:
+        response = requests.get(url, timeout=60)
+        if response.status_code == 200:
+            with open(save_path, "wb") as f:
+                f.write(response.content)
+            print(f"✅ Successfully synced {save_path} from IPFS.")
+            return True
+        else:
+            print(f"❌ IPFS Download Failed: {response.status_code}")
+            return False
+    except Exception as e:
+        print(f"❌ Network Error during IPFS fetch: {e}")
+        return False
+
+def upload_to_pinata(file_path):
+    """
+    Uploads the local model update back to Pinata IPFS.
+    """
+    url = "https://api.pinata.cloud/pinning/pinFileToIPFS"
+    headers = {"Authorization": f"Bearer {PINATA_JWT}"}
     
     try:
         with open(file_path, "rb") as file:
             files = {"file": file}
             response = requests.post(url, files=files, headers=headers)
-            
             if response.status_code == 200:
-                # Success!
                 return response.json()["IpfsHash"]
             else:
-                # Print the exact error from Pinata to your backend terminal
                 print(f"❌ PINATA UPLOAD FAILED: {response.status_code}")
-                print(f"Error Details: {response.text}")
                 return "QmFakeHash_UploadFailed"
-                
     except Exception as e:
         print(f"❌ NETWORK ERROR: {e}")
         return "QmFakeHash_UploadFailed"
-# Define Model
+
+# --- MODEL ARCHITECTURE ---
 class Net(nn.Module):
     def __init__(self):
         super(Net, self).__init__()
@@ -53,58 +95,60 @@ class Net(nn.Module):
         x = self.relu(self.fc1(x))
         x = self.fc2(x)
         return x
-def train_local(num_samples=500,round_id=1):
+
+def train_local(num_samples=500, round_id=1):
     """
-    Trains the model locally on a random subset of data.
-    Returns: (ipfs_hash, accuracy, logs[])
+    The automated training loop:
+    1. Finds global model CID by name on Pinata.
+    2. Downloads weights from IPFS.
+    3. Loads weights into Net and trains for 10 epochs.
+    4. Uploads result back to Pinata.
     """
     
-    # 1. Load Data
+    # 1. Load Local Data (PneumoniaMNIST)
     info = INFO['pneumoniamnist']
     DataClass = getattr(medmnist, info['python_class'])
     train_dataset = DataClass(split='train', download=True, transform=None)
     
-    # --- RANDOM SAMPLING (Fixed for Numpy) ---
     total_len = len(train_dataset)
     sample_count = min(num_samples, total_len)
-    
-    # Randomly select indices
     indices = random.sample(range(total_len), sample_count)
     
-    # FIX: Access the underlying numpy array (.imgs) directly
-    # train_dataset.imgs is a numpy array (N, 28, 28)
-    # train_dataset.labels is a numpy array (N, 1)
     subset_imgs = train_dataset.imgs[indices]
     subset_labels = train_dataset.labels[indices]
     
-    # Convert to Tensor [Batch, Channel, Height, Width]
-    # We divide by 255.0 to normalize pixel values to 0-1 range
     X = torch.tensor(subset_imgs).float().unsqueeze(1) / 255.0
     y = torch.tensor(subset_labels).long().squeeze()
-    
     loader = DataLoader(TensorDataset(X, y), batch_size=32, shuffle=True)
 
-    # 2. Train (10 Epochs)
+    # 2. MANDATORY IPFS SYNC
     model = Net()
-    global_model_path = f"global_model_r{round_id}.pth"
-    if os.path.exists(global_model_path):
-        print(f"Loading Global Model from Round {round_id}")
-        model.load_state_dict(torch.load(global_model_path))
+    target_filename = f"global_model_r{round_id}.pth"
+    
+    # Search for the CID using the filename
+    global_hash = get_hash_by_filename(target_filename)
+    
+    if global_hash:
+        # Mandatory download from IPFS
+        fetch_global_model_from_ipfs(round_id, global_hash)
+    
+    # Load weights if the file was successfully downloaded
+    if os.path.exists(target_filename):
+        print(f"✅ Initializing training with Global Baseline: {target_filename}")
+        model.load_state_dict(torch.load(target_filename))
     else:
-        print("No global model found, starting from scratch.")
+        print(f"⚠️ Baseline {target_filename} not found on IPFS. Starting from scratch.")
+
+    # 3. Local Training (10 Epochs)
     optimizer = optim.Adam(model.parameters(), lr=0.001)
     criterion = nn.CrossEntropyLoss()
-    
     model.train()
     training_logs = [] 
-    
-    print(f"Starting training on {sample_count} samples for 10 epochs...")
+
+    print(f"Starting training on {sample_count} samples...")
 
     for epoch in range(10):
-        total_loss = 0
-        correct = 0
-        total = 0
-        
+        total_loss, correct, total = 0, 0, 0
         for images, labels in loader:
             optimizer.zero_grad()
             outputs = model(images)
@@ -126,16 +170,11 @@ def train_local(num_samples=500,round_id=1):
 
     final_accuracy = correct / total
     
-    # 3. Save & Upload to Pinata
+    # 4. Save & Upload
     model_path = "local_model.pth"
     torch.save(model.state_dict(), model_path)
     
-    print("Uploading to Pinata IPFS...")
+    print("Uploading local update to Pinata IPFS...")
     ipfs_hash = upload_to_pinata(model_path)
-    
-    if "QmFake" in ipfs_hash:
-        print("⚠️ Upload failed. Check logs above.")
-    else:
-        print(f"✅ Uploaded! Hash: {ipfs_hash}")
     
     return ipfs_hash, final_accuracy, training_logs
