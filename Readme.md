@@ -17,3 +17,9 @@ In backend dir
 ```
 python aggregator_pro.py
 ```
+
+## To run using docker (frontend + backend)
+
+```
+docker-compose up
+```
