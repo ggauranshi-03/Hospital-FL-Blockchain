@@ -1,8 +1,11 @@
+--index-url https://download.pytorch.org/whl/cpu
+--extra-index-url https://pypi.org/simple
 fastapi
 uvicorn
 pydantic
 web3
-torch
 numpy
 requests
 medmnist
+python-multipart
+torch

@@ -1,5 +1,3 @@
-version: '3.8'
-
 services:
   backend:
     build: ./backend
@@ -8,9 +6,7 @@ services:
       - "8000:8000"
     volumes:
       - ./backend:/app  # Maps your local code to container (optional, good for dev)
-    environment:
-      - PINATA_JWT=${PINATA_JWT} # Pass JWT if set in your shell, or hardcode it here
-  
+
   frontend:
     build: ./frontend
     container_name: hospital-frontend
